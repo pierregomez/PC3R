@@ -20,7 +20,6 @@ public class Producteur implements Runnable{
 					this.file.enfiler( new Paquet(this.produit + i));
 				}
 			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 		}

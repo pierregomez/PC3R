@@ -10,7 +10,7 @@ public class Compteur{
 		cpt --;
 	}
 	
-	public synchronized static int getValue() {
+	public static int getValue() {
 		return cpt;
 	}
 	
