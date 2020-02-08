@@ -17,21 +17,24 @@ public class Consommateur implements Runnable{
 	@Override
 	public void run() {
 		while(Compteur.getValue() > 0) {
-			try {
-				synchronized(file) {
-					//TODO proteger l'utilisation du compteur
-					c.decremente();
-					System.out.println("Conso"+ id + " mange " + this.file.defile().getContent() + " \t reste " + Compteur.getValue());
-					
+			synchronized(c) {
+				try {
+					synchronized(file) {
+						c.decremente();
+						System.out.println("Conso"+ id + " mange " + this.file.defile().getContent() + " \t reste " + Compteur.getValue());
+						
+					}
+				} catch (InterruptedException e) {
+					e.printStackTrace();
 				}
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+				if(Compteur.getValue()==0) {
+					System.out.println("------compteur 0");
+					c.notifyAll();
+				}
+				System.out.println("----Conso relache lock");
 			}
 		}
-		synchronized(c) {
-			c.notifyAll();
-		}
+		System.out.println("---conso finie");
 		
 		
 	}
