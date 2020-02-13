@@ -7,40 +7,37 @@
 #include <unistd.h>
 #include "ft_v1.1/include/fthread.h"
 
-#define NbProd 2
-#define NbCons 2
-#define cibleProd 3
+#define NBPROD 2
+#define NBCONS 2
+#define CIBLEPROD 3
+#define TAILLE 5
 
 
-int compteur = NbProd * cibleProd;
+int compteur = NBPROD * CIBLEPROD;
 
 
 ft_scheduler_t compteur_sched;
 ft_scheduler_t tapis_sched;
+ft_scheduler_t tcons_sched;
+ft_scheduler_t tprod_sched;
 
 ft_event_t endConso;
 ft_event_t plusVide;
 ft_event_t plusPlein;
 
-typedef struct Produit produit;
-struct Produit
+typedef struct paquet paquet;
+struct paquet
 {
-    char nom[32];
-    produit *next;
+    char content[32];
 };
 
-typedef struct Pile pile;
-struct Pile
-{
-    produit *first;
-};
 
 typedef struct Tapis Tapis;
 struct Tapis
 {
-    pile *pile;
+    paquet file[TAILLE];
     int capacite;
-    int nbobj;
+    int nbElem;
 };
 
 typedef struct _ProdArgs
@@ -57,7 +54,7 @@ typedef struct ConsoArgs
 } ConsoArgs;
 static int id = 0;
 
-//Decremente avec mutex cpt et renvoi vrai si reussi
+//Decremente cpt et renvoi vrai si reussi
 bool decremente(int *cpt)
 {
     if (*cpt > 0)
@@ -71,87 +68,45 @@ bool decremente(int *cpt)
     }
 }
 
-void empiler(pile *pile, char p[])
-{
-    //creation d'un new produit
-    produit *new = malloc(sizeof(*new));
 
-    if (pile == NULL || new == NULL)
-    {
-        exit(EXIT_FAILURE);
-    }
-
-    //init le new
-    strcpy(new->nom, p);
-    new->next = NULL;
-
-    //insertion fin si non vide sinon tete
-    if (pile->first != NULL)
-    {
-        produit *current = pile->first;
-        while (current->next != NULL)
-        {
-            current = current->next;
-        }
-
-        current->next = new;
-    }
-    else
-        pile->first = new;
-}
-
-char *depiler(pile *pile)
-{
-    if (pile == NULL)
-    {
-        exit(EXIT_FAILURE);
-    }
-
-    char *res = malloc(sizeof(*res));
-
-    //si pile non vide on la parcourt
-    if (pile->first != NULL)
-    {
-        //on recup le first et on met dans res le nom de l'elem
-        produit *elem = pile->first;
-        strcpy(res, elem->nom);
-        //on passe a l'elem suivant et on libere l'elem
-        pile->first = elem->next;
-        free(elem);
-        //on retourne le nom
-        return res;
-    }
-    return NULL;
-}
-
-void enfiler(Tapis *tapis, char name[])
+void enfiler(Tapis *t, paquet p)
 {
 
     //si full on attend
-    while (tapis->capacite == tapis->nbobj)
+    while (t->capacite == t->nbElem)
     {
         ft_await(plusPlein);
     }
-    //on empile quand c'est libre
-    empiler(tapis->pile, name);
-    tapis->nbobj++;
-
+    if(t->nbElem + 1 > t->capacite)
+        perror("tapis overflow in empiler");
+    //on place le paquet en fin de file
+    t -> file[t -> nbElem] = p;
+    t->nbElem++;
+    //on previent que le tapis n'est plus vide
     ft_broadcast(plusVide);
 }
 
-char *defiler(Tapis *tapis)
+paquet defiler(Tapis *t)
 {
     //si vide on attend
-    while (tapis->nbobj == 0)
+    while (t->nbElem == 0)
     {
         ft_await(plusVide);
     }
-    //on depile et on garde le resultat qu'on renvoi
-    char *res = malloc(sizeof(*res));
-    strcpy(res, depiler(tapis->pile));
-    tapis->nbobj--;
+    //recuperation du premier element (headpop)
+    paquet p = t->file[0];
+    //copie et decalage du tapis
+    Tapis * tmp;
+    tmp -> capacite = t -> capacite;
+    int i;
+    for( i = 0 ; i < (t -> nbElem) - 1 ; i++ ){  //a voir s'il n'y a q'un elem
+        tmp -> file[i] = t -> file[i+1];
+    }
+    t = tmp;
+    t->nbElem--;
+    //on previent que le tapis n'est plus plein
     ft_broadcast(plusPlein);
-    return res;
+    return p;
 }
 
 void *consommateur(void *args)
@@ -188,15 +143,25 @@ void *producteur(void *args)
         strcat(newname, " ");
         sprintf(buff, "%d", cpt);
         strcat(newname, buff);
-        enfiler(tapis, newname);
+        paquet p;
+        p.content = newname; // ????
+
+        enfiler(tapis, p);
         printf("Producteur: %s\n", newname);
 
         cible--;
         cpt++;
+        ft_cooperate();
     }
 
     printf("Fin producteur\n");
 }
+
+void* messager(Tapis * tcons, Tapis* tprod){
+
+
+}
+
 int main()
 {
     int i;
@@ -204,27 +169,19 @@ int main()
     // Les tapis initialisés
     Tapis tapis_prod;
     Tapis tapis_cons;
-    tapis_prod.pile = malloc(sizeof(tapis_prod.pile));
-    tapis_cons.pile = malloc(sizeof(tapis_cons.pile));
-    //initialisation de la pile
-    tapis_cons.pile->first = NULL; 
-    tapis_cons.capacite = 4;       
-    tapis_cons.nbobj = 0;
-    tapis_prod.pile->first = NULL; 
-    tapis_prod.capacite = 4;       
-    tapis_prod.nbobj = 0;
+    tapis_cons.capacite = TAILLE;       
+    tapis_cons.nbElem = 0;
+    tapis_prod.capacite = TAILLE;       
+    tapis_prod.nbElem = 0;
 
-    //produits
-    char produits[][10] = {
-        "pomme",
-        "poire"};
 
-    compteur_sched       = ft_scheduler_create();
-    tapis_sched       = ft_scheduler_create();
+    compteur_sched = ft_scheduler_create();
+    tcons_sched = ft_scheduler_create();
+    tprod_sched = ft_scheduler_create();
 
-    endConso         = ft_event_create(compteur_sched);
-    plusVide        = ft_event_create(tapis_sched);
-    plusPlein        = ft_event_create(tapis_sched);
+    endConso = ft_event_create(compteur_sched);
+    plusVide = ft_event_create(tapis_sched);
+    plusPlein = ft_event_create(tapis_sched);
 
     ProdArgs pargs;
     pargs.tapis = tapis_prod;
@@ -236,15 +193,15 @@ int main()
 
     //Lancement thread producteurs
 
-    for (i = 0; i < NbProd; i++)
+    for (i = 0; i < NBPROD; i++)
     {
-        ft_thread_create(tapis_sched,producteur, NULL,&pargs);
+        ft_thread_create(tprod_sched,producteur, NULL,&pargs);
     }
 
-    for (i = 0; i < NbCons; i++)
+    for (i = 0; i < NBCONS; i++)
     {
         cargs.id = i;
-        ft_thread_create(tapis_sched,consommateur, NULL,&cargs);
+        ft_thread_create(tcons_sched,consommateur, NULL,&cargs);
     }
 
     while(compteur>0){
