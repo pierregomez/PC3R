@@ -5,7 +5,7 @@
 #include <sched.h>
 #include <stdbool.h>
 #include <unistd.h>
-#include "fthread.h"
+#include "ft_v1.1/include/fthread.h"
 
 #define NbProd 2
 #define NbCons 2
