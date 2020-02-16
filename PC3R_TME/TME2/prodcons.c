@@ -9,21 +9,20 @@
 
 #define NBPROD 2
 #define NBCONS 2
+#define NBMESS 2
 #define CIBLEPROD 3
 #define TAILLE 5
+#define TAPISCONS 0
+#define TAPISPROD 1
 
 
 int compteur = NBPROD * CIBLEPROD;
 
-
-ft_scheduler_t compteur_sched;
-ft_scheduler_t tapis_sched;
-ft_scheduler_t tcons_sched;
-ft_scheduler_t tprod_sched;
-
 ft_event_t endConso;
-ft_event_t plusVide;
-ft_event_t plusPlein;
+ft_event_t plusVideP;
+ft_event_t plusPleinP;
+ft_event_t plusVideC;
+ft_event_t plusPleinC;
 
 typedef struct paquet paquet;
 struct paquet
@@ -43,16 +42,32 @@ struct Tapis
 typedef struct _ProdArgs
 {
     int cible;
-    Tapis tapis;
+    Tapis *tapis;
     char nom[100];
+    FILE* prodLog;
 } ProdArgs;
 
 typedef struct ConsoArgs
 {
     int id;
     Tapis *tapis;
+    FILE *ConsoLog;
 } ConsoArgs;
+
+typedef struct MessArgs
+{
+    ft_scheduler_t tcons_sched;
+    ft_scheduler_t tprod_sched;
+    Tapis *tapisC;
+    Tapis *tapisP;
+    int id;
+    FILE* MessLog;
+} MessArgs;
+
 static int id = 0;
+
+
+//===========Utils==========
 
 //Decremente cpt et renvoi vrai si reussi
 bool decremente(int *cpt)
@@ -69,13 +84,17 @@ bool decremente(int *cpt)
 }
 
 
-void enfiler(Tapis *t, paquet p)
+
+void enfiler(Tapis *t, paquet p, int tapis_type)
 {
 
     //si full on attend
     while (t->capacite == t->nbElem)
     {
-        ft_await(plusPlein);
+        if(tapis_type == TAPISCONS)
+            ft_await(plusPleinC);
+        if(tapis_type == TAPISPROD)
+            ft_await(plusPleinP);
     }
     if(t->nbElem + 1 > t->capacite)
         perror("tapis overflow in empiler");
@@ -83,15 +102,25 @@ void enfiler(Tapis *t, paquet p)
     t -> file[t -> nbElem] = p;
     t->nbElem++;
     //on previent que le tapis n'est plus vide
-    ft_broadcast(plusVide);
+    if(tapis_type== TAPISCONS)
+        ft_broadcast(plusVideC);
+    if(tapis_type == TAPISPROD)
+        ft_broadcast(plusVideP);
+    
 }
 
-paquet defiler(Tapis *t)
+
+
+
+paquet defiler(Tapis *t, int tapis_type)
 {
     //si vide on attend
     while (t->nbElem == 0)
-    {
-        ft_await(plusVide);
+    {   
+        if(tapis_type == TAPISCONS)
+            ft_await(plusVideC);
+        if(tapis_type == TAPISPROD)
+            ft_await(plusVideP);
     }
     //recuperation du premier element (headpop)
     paquet p = t->file[0];
@@ -99,31 +128,41 @@ paquet defiler(Tapis *t)
     Tapis * tmp;
     tmp -> capacite = t -> capacite;
     int i;
-    for( i = 0 ; i < (t -> nbElem) - 1 ; i++ ){  //a voir s'il n'y a q'un elem
+    for( i = 0 ; i < (t -> nbElem) - 1 ; i++ ){  //TODO a voir s'il n'y a qu'un elem
         tmp -> file[i] = t -> file[i+1];
     }
     t = tmp;
     t->nbElem--;
     //on previent que le tapis n'est plus plein
-    ft_broadcast(plusPlein);
+    if(tapis_type == TAPISCONS)
+        ft_broadcast(plusPleinC);
+    if(tapis_type == TAPISPROD)
+        ft_broadcast(plusPleinP);
     return p;
 }
+
+//==========Routines=============
 
 void *consommateur(void *args)
 {
     printf("Debut consommateur\n");
     ConsoArgs *arg = (ConsoArgs *)args;
     Tapis *tapis = arg->tapis;
+    FILE* clog = arg ->ConsoLog;
     id++;
 
     while (decremente(&compteur))
-    {
-        printf("C%d mange %s\n", id, defiler(tapis));
+    {   
+        paquet p =defiler(tapis, TAPISCONS);
+        printf("C%d mange %s\n", id, p.content);
+        fputs(p.content, clog);
         ft_cooperate();
     }
     ft_broadcast(endConso);
     printf("Fin consommateur\n");
 }
+
+
 
 void *producteur(void *args)
 {
@@ -134,6 +173,7 @@ void *producteur(void *args)
     strcpy(name, arg->nom);
     Tapis *tapis = &arg->tapis;
     int cpt = 1;
+    FILE* plog = arg->prodLog; 
 
     while (cible != 0)
     {
@@ -143,28 +183,42 @@ void *producteur(void *args)
         strcat(newname, " ");
         sprintf(buff, "%d", cpt);
         strcat(newname, buff);
-        paquet p;
-        p.content = newname; // ????
+        paquet* p = (paquet *) malloc(sizeof(paquet));
+        strcpy(p -> content,newname);
 
-        enfiler(tapis, p);
+        enfiler(tapis, *p, TAPISPROD);
         printf("Producteur: %s\n", newname);
 
         cible--;
         cpt++;
+        fputs(newname, plog);
         ft_cooperate();
     }
 
     printf("Fin producteur\n");
 }
 
-void* messager(Tapis * tcons, Tapis* tprod){
 
+
+void* messager(void *args){
+    MessArgs* arg = (MessArgs *) args;
+    ft_scheduler_t psched = arg ->tprod_sched;
+    ft_scheduler_t csched = arg ->tcons_sched;
+    Tapis  *tcons = arg ->tapisC;
+    Tapis  *tprod = arg ->tapisP;
+    FILE* mlog = arg ->MessLog;
+
+    while(compteur > 0){
+
+    }
 
 }
 
+
+//=============Main================
+
 int main()
 {
-    int i;
 
     // Les tapis initialisés
     Tapis tapis_prod;
@@ -174,27 +228,47 @@ int main()
     tapis_prod.capacite = TAILLE;       
     tapis_prod.nbElem = 0;
 
+    //schedulers
+    ft_scheduler_t compteur_sched = ft_scheduler_create();
+    ft_scheduler_t tcons_sched = ft_scheduler_create();
+    ft_scheduler_t tprod_sched = ft_scheduler_create();
 
-    compteur_sched = ft_scheduler_create();
-    tcons_sched = ft_scheduler_create();
-    tprod_sched = ft_scheduler_create();
-
+    //events
     endConso = ft_event_create(compteur_sched);
-    plusVide = ft_event_create(tapis_sched);
-    plusPlein = ft_event_create(tapis_sched);
+    plusVideC = ft_event_create(tcons_sched);
+    plusPleinC = ft_event_create(tcons_sched);
+    plusVideP = ft_event_create(tprod_sched);
+    plusPleinP = ft_event_create(tprod_sched);
 
+    //log files
+    FILE* clog = fopen("ConsoLog.txt","a+");
+    FILE* plog = fopen("ProdLog.txt","a+");
+    FILE* mlog = fopen("MessLog.txt","a+");
+
+    //routine args init
     ProdArgs pargs;
-    pargs.tapis = tapis_prod;
+    pargs.tapis = &tapis_prod;
     pargs.cible = 3;
     strcpy(pargs.nom, "pomme");
+    pargs.prodLog = plog;
 
     ConsoArgs cargs;
-    *(cargs.tapis) = tapis_cons;
+    cargs.tapis = &tapis_cons;
+    cargs.ConsoLog = clog;
+
+    MessArgs margs;
+    margs.tapisC = &tapis_cons;
+    margs.tapisP = &tapis_prod;
+    margs.tcons_sched = tcons_sched;
+    margs.tprod_sched = tprod_sched;
+    margs.MessLog = mlog;
 
     //Lancement thread producteurs
 
+    int i;
     for (i = 0; i < NBPROD; i++)
     {
+        strcpy(pargs.nom, "pomme");
         ft_thread_create(tprod_sched,producteur, NULL,&pargs);
     }
 
@@ -204,7 +278,12 @@ int main()
         ft_thread_create(tcons_sched,consommateur, NULL,&cargs);
     }
 
-    while(compteur>0){
+    /*  les threads utilisant le compteur ne sont pas sur le meme scheduler
+        ils peuvent donc etre preemptes et rendre le compteur incoherent
+        probleme : comment attacher le main a un sched ? (puisqu'ici le main attente que compteur = 0)
+        solution ? deleguer la gestion de l'attente du compteur à un thread, et faire join sur ce thread ?
+    */
+    while(compteur>0){      
         ft_await(endConso);
     }
 
