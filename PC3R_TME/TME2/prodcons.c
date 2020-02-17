@@ -209,7 +209,13 @@ void* messager(void *args){
     FILE* mlog = arg ->MessLog;
 
     while(compteur > 0){
-
+        ft_thread_link(psched);
+        paquet p = defiler(tprod,TAPISPROD);
+        ft_thread_unlink();
+        fputs(p.content,mlog);
+        ft_thread_link(csched);
+        enfiler(tprod, p, TAPISCONS);
+        ft_thread_unlink();
     }
 
 }
