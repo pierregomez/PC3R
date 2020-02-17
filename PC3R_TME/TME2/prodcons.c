@@ -284,6 +284,11 @@ int main()
         ft_thread_create(tcons_sched,consommateur, NULL,&cargs);
     }
 
+    for (i = 0; i < NBMESS; i++)
+    {
+        ft_thread_create(NULL,messager, NULL,&margs);
+    }
+
     /*  les threads utilisant le compteur ne sont pas sur le meme scheduler
         ils peuvent donc etre preemptes et rendre le compteur incoherent
         probleme : comment attacher le main a un sched ? (puisqu'ici le main attente que compteur = 0)
