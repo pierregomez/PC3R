@@ -28,7 +28,7 @@ func reader(cline chan string) {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		cline <- scanner.Text()
-		fmt.Printf("YOOOOOO")
+
 	}
 
 }
@@ -54,7 +54,8 @@ func compute(cp chan paquet) {
 	p := <-cp
 	arr, _ := time.Parse("15:04:05", p.arrivee)
 	deb, _ := time.Parse("15:04:05", p.depart)
-	p.arret = int(arr.Sub(deb).Seconds())
+	p.arret = int(deb.Sub(arr).Seconds())
+	// fmt.Printf("p.arret %v\n", p.arret)
 	cp <- p
 }
 func processServer(cancan chan chan paquet) {
@@ -67,12 +68,16 @@ func processServer(cancan chan chan paquet) {
 func reduce(cres chan paquet, cmain chan int) {
 	var acc int
 	var cpt int
-	select {
-	case p := <-cres:
-		acc = acc + p.arret
-		cpt = cpt + 1
-	case <-cmain:
-		cmain <- acc / cpt
+	for {
+		select {
+		case p := <-cres:
+			acc = acc + p.arret
+			cpt = cpt + 1
+			fmt.Printf("acc %v cpt %v\n", acc, cpt)
+		case <-cmain:
+			cmain <- acc / cpt
+			return
+		}
 	}
 }
 
@@ -85,17 +90,20 @@ func main() {
 	cline := make(chan string)
 	cancan := make(chan chan paquet)
 
-	//threads
 	go func() { reader(cline) }()
 	for i := 0; i < NBWORKER; i++ {
+
 		go func() { worker(cline, cancan, cres) }()
 	}
+
 	go func() { processServer(cancan) }()
+
 	go func() { reduce(cres, cmain) }()
 
 	//attente
 	time.Sleep(time.Duration(duree) * (time.Millisecond))
+
 	cmain <- 0
 	res := <-cmain
-	fmt.Printf("moyenne des temps d'arret des trains : %v s", res)
+	fmt.Printf("moyenne des temps d'arret des trains : %vsec\n", res)
 }
