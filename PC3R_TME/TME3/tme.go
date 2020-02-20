@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -14,15 +15,20 @@ type paquet struct {
 	arret   int
 }
 
+// nobmre de worker
+const NBWORKER int = 3
+
 func reader(cline chan string) {
 	f, err := os.Open("./stop_times.txt")
 	if err != nil {
 		panic(err)
 	}
+
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		cline <- scanner.Text()
+		fmt.Printf("YOOOOOO")
 	}
 
 }
@@ -72,5 +78,24 @@ func reduce(cres chan paquet, cmain chan int) {
 
 func main() {
 	duree, _ := (strconv.Atoi(os.Args[1]))
-	time.Sleep(duree * time.Millisecond)
+
+	//chans
+	cres := make(chan paquet)
+	cmain := make(chan int)
+	cline := make(chan string)
+	cancan := make(chan chan paquet)
+
+	//threads
+	go func() { reader(cline) }()
+	for i := 0; i < NBWORKER; i++ {
+		go func() { worker(cline, cancan, cres) }()
+	}
+	go func() { processServer(cancan) }()
+	go func() { reduce(cres, cmain) }()
+
+	//attente
+	time.Sleep(time.Duration(duree) * (time.Millisecond))
+	cmain <- 0
+	res := <-cmain
+	fmt.Printf("moyenne des temps d'arret des trains : %v s", res)
 }
