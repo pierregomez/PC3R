@@ -15,7 +15,7 @@ type paquet struct {
 	arret   int
 }
 
-// nobmre de worker
+// "NBWORKER ..."
 const NBWORKER int = 3
 
 func reader(cline chan string) {
@@ -55,7 +55,7 @@ func compute(cp chan paquet) {
 	arr, _ := time.Parse("15:04:05", p.arrivee)
 	deb, _ := time.Parse("15:04:05", p.depart)
 	p.arret = int(deb.Sub(arr).Seconds())
-	// fmt.Printf("p.arret %v\n", p.arret)
+	//fmt.Printf("p.arret %v\n", p.arret)
 	cp <- p
 }
 func processServer(cancan chan chan paquet) {
@@ -73,7 +73,7 @@ func reduce(cres chan paquet, cmain chan int) {
 		case p := <-cres:
 			acc = acc + p.arret
 			cpt = cpt + 1
-			fmt.Printf("acc %v cpt %v\n", acc, cpt)
+			//fmt.Printf("acc %v cpt %v\n", acc, cpt)
 		case <-cmain:
 			cmain <- acc / cpt
 			return
