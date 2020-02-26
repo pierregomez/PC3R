@@ -169,10 +169,10 @@ func lecteur(url chan mess_reader) {
 // Si le statut est V, ils initialise le paquet de personne puis le repasse aux gestionnaires
 // Si le statut est R, ils travaille une fois sur le paquet puis le repasse aux gestionnaires
 // Si le statut est C, ils passent le paquet au collecteur
-func ouvrier() {
+func ouvrier(ouv chan personne_emp, col chan personne_emp) {
 	for {
 		pers := <-ouv
-		s := pers.status
+		s := pers.statut
 		fmt.Println("Ouvrier : Paquet recu avec status : " + s)
 		switch s {
 		case "V":
@@ -208,7 +208,7 @@ func producteur(enfiler chan personne_int, lire chan mess_reader) {
 // Partie 2: les producteurs distants cree des personne_int implementees par des personne_dist qui contiennent un identifiant unique
 // utilisé pour retrouver l'object sur le serveur
 // la creation sur le client d'une personne_dist doit declencher la creation sur le serveur d'une "vraie" personne, initialement vide, de statut V
-func producteur_distant(enfiler chan personne_int, proxer chan message_proxy, frais chan int) {
+func producteur_distant( /*enfiler chan personne_int, proxer chan message_proxy, frais chan int*/ ) {
 	// A FAIRE
 }
 
