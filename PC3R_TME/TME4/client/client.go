@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"regexp"
@@ -10,7 +11,7 @@ import (
 	"time"
 
 	st "./structures" // contient la structure Personne
-	tr "./travaux" // contient les fonctions de travail sur les Personnes
+	tr "./travaux"    // contient les fonctions de travail sur les Personnes
 )
 
 var ADRESSE string = "localhost"                           // adresse de base pour la Partie 2
@@ -24,17 +25,18 @@ var NB_PD int = 2                                          // nombre de producte
 
 var pers_vide = st.Personne{Nom: "", Prenom: "", Age: 0, Sexe: "M"} // une personne vide
 
-type mess_reader struct{
+type mess_reader struct {
 	contenu int
-	retour chan string
+	retour  chan string
 }
+
 // paquet de personne, sur lequel on peut travailler, implemente l'interface personne_int
 type personne_emp struct {
 	statut string
 	st.Personne
 	reader chan mess_reader
-	tasks []func(st.Personne) st.Personne
-	id int
+	tasks  []func(st.Personne) st.Personne
+	id     int
 }
 
 // paquet de personne distante, pour la Partie 2, implemente l'interface personne_int
@@ -66,29 +68,30 @@ func personne_de_ligne(l string) st.Personne {
 
 func (p *personne_emp) initialise() {
 	ret := make(chan string)
-	p.reader <- mess_reader(contenu: p.ligne, retour: ret)
-	ligne := <- ret
+	//p.reader <- mess_reader(contenu: p.ligne, retour: ret)
+	//p.reader <- mess_reader(p.ligne, ret)
+	ligne := <-ret
 	p.Personne = personne_de_ligne(ligne)
-	for i := 0; i < randIntn(6)+1; i++ {
+	for i := 0; i < rand.Intn(6)+1; i++ {
 		p.tasks = append(p.tasks, tr.UnTravail())
 	}
 	p.statut = "R"
 }
 
 func (p *personne_emp) travaille() {
-	p.Personne = p?tasks[0](p.Personne)
+	p.Personne = p.tasks[0](p.Personne)
 	p.tasks = p.tasks[1:]
-	if len(p.tasks) == 0{
+	if len(p.tasks) == 0 {
 		p.statut = "C"
 	}
 }
 
 func (p *personne_emp) vers_string() string {
 	var add string
-	if p.Sexe == "F"{
+	if p.Sexe == "F" {
 		add = "Madame"
 	} else {
-		add= "Monsieur"
+		add = "Monsieur"
 	}
 	return fmt.Sprint(add, p.Prenom, " ", p.Nom, " : ", p.Age, "ans")
 }
@@ -102,30 +105,30 @@ func (p *personne_emp) donne_statut() string {
 
 func (p personne_dist) initialise() {
 	local := make(chan string)
-	mess := message_proxy{methode: "initialise", retour: local, identifiant: p.identifiant}
-	p.proxy <- mess
-	<- local
+	//mess := message_proxy{methode: "initialise", retour: local, identifiant: p.identifiant}
+	//p.proxy <- mess
+	<-local
 }
 
 func (p personne_dist) travaille() {
 	local := make(chan string)
-	mess := message_proxy{methode: "travaille", retour: local, identifiant: p.identifiant}
-	p.proxy <- mess
-	<- local
+	//mess := message_proxy{methode: "travaille", retour: local, identifiant: p.identifiant}
+	//p.proxy <- mess
+	<-local
 }
 
 func (p personne_dist) vers_string() string {
 	local := make(chan string)
-	mess := message_proxy{methode: "vers_string", retour: local, identifiant: p.identifiant}
-	p.proxy <- mess
-	return <- local
+	// mess := message_proxy{methode: "vers_string", retour: local, identifiant: p.identifiant}
+	// p.proxy <- mess
+	return <-local
 }
 
 func (p personne_dist) donne_statut() string {
 	local := make(chan string)
-	mess := message_proxy{methode: "donne_statut", retour: local, identifiant: p.identifiant}
-	p.proxy <- mess
-	return <- local
+	// mess := message_proxy{methode: "donne_statut", retour: local, identifiant: p.identifiant}
+	// p.proxy <- mess
+	return <-local
 }
 
 // *** CODE DES GOROUTINES DU SYSTEME ***
@@ -138,22 +141,22 @@ func proxy() {
 
 // Partie 1 : contacté par la méthode initialise() de personne_emp, récupère une ligne donnée dans le fichier source
 func lecteur(url chan mess_reader) {
-	for{
-		m:=url
+	for {
+		m := url
 		fmt.Println("lecture de la ligne", m.contenu)
 		fichier, err := os.Open(FICHIER_SOURCE)
-		if err != nil{
+		if err != nil {
 			log.Fatal(err)
 		}
 
 		scanner := bufio.NewScanner(fichier)
 		_ = scanner.Scan()
 
-		for i := 0, i< m.contenu; i++{
+		for i := 0; i < m.contenu; i++ {
 			_ = scanner.Scan()
 		}
 		res := scanner.Scan()
-		if res == false{
+		if res == false {
 			log.Fatal(err)
 		} else {
 			m.retour <- scanner.Text()
@@ -167,18 +170,37 @@ func lecteur(url chan mess_reader) {
 // Si le statut est R, ils travaille une fois sur le paquet puis le repasse aux gestionnaires
 // Si le statut est C, ils passent le paquet au collecteur
 func ouvrier() {
-	// A FAIRE
+	for {
+		pers := <-ouv
+		s := pers.status
+		fmt.Println("Ouvrier : Paquet recu avec status : " + s)
+		switch s {
+		case "V":
+			pers.initialise()
+			fmt.Println("Paquet vide, retour vers gestionnaire")
+			ouv <- pers
+		case "R":
+			pers.travaille()
+			fmt.Println("Paquet Travail, retour vers gestionnaire")
+			ouv <- pers
+		case "C":
+			fmt.Println("Paquet fini, envoi vers collecteur")
+			col <- pers
+		}
+
+	}
 }
 
 // Partie 1: les producteurs cree des personne_int implementees par des personne_emp initialement vides,
 // de statut V mais contenant un numéro de ligne (pour etre initialisee depuis le fichier texte)
 // la personne est passée aux gestionnaires
 func producteur(enfiler chan personne_int, lire chan mess_reader) {
-	for{
+	for {
 		np := pers_vide
-		nt := make([]func(st.Personne) st.Personne 0)
-		npe := personne_emp(statut: "V", ligne: randIntn(TAILLE_SOURCE), tasks: nt, Personne: np, reader: mess_reader)
-		fmt.Println("Production ligne",npe.ligne)
+		nt := make([]func(st.Personne) st.Personne, 0)
+		//npe := personne_emp(statut: "V", ligne: randIntn(TAILLE_SOURCE), tasks: nt, Personne: np, reader: mess_reader)
+		npe := personne_emp("V", randIntn(TAILLE_SOURCE), nt, np, mess_reader)
+		fmt.Println("Production ligne", npe.ligne)
 		enfiler <- personne_int(&npe)
 	}
 }
@@ -210,8 +232,8 @@ func main() {
 		fmt.Println("Format: client <port> <millisecondes d'attente>")
 		return
 	}
-	port, _ := strconv.Atoi(os.Args[1]) // utile pour la partie 2
-	millis, _ := strconv.Atoi(os.Args[2]) // duree du timeout 
+	port, _ := strconv.Atoi(os.Args[1])   // utile pour la partie 2
+	millis, _ := strconv.Atoi(os.Args[2]) // duree du timeout
 	fintemps := make(chan int)
 	// A FAIRE
 	// creer les canaux
