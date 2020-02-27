@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"sync"
 	"time"
 
 	st "./structures" // contient la structure Personne
@@ -22,6 +23,7 @@ var NB_G int = 2                                           // nombre de gestionn
 var NB_P int = 2                                           // nombre de producteurs
 var NB_O int = 4                                           // nombre d'ouvriers
 var NB_PD int = 2                                          // nombre de producteurs distants pour la Partie 2
+var mux sync.Mutex
 
 var pers_vide = st.Personne{Nom: "", Prenom: "", Age: 0, Sexe: "M"} // une personne vide
 
@@ -68,14 +70,16 @@ func personne_de_ligne(l string) st.Personne {
 
 func (p *personne_emp) initialise() {
 	ret := make(chan string)
-	//p.reader <- mess_reader(contenu: p.ligne, retour: ret)
-	//p.reader <- mess_reader(p.ligne, ret)
+	p.reader <- mess_reader{contenu: p.id, retour: ret}
 	ligne := <-ret
 	p.Personne = personne_de_ligne(ligne)
 	for i := 0; i < rand.Intn(6)+1; i++ {
 		p.tasks = append(p.tasks, tr.UnTravail())
 	}
 	p.statut = "R"
+
+	// fmt.Println("AAA: " + p.vers_string())
+
 }
 
 func (p *personne_emp) travaille() {
@@ -169,22 +173,30 @@ func lecteur(url chan mess_reader) {
 // Si le statut est V, ils initialise le paquet de personne puis le repasse aux gestionnaires
 // Si le statut est R, ils travaille une fois sur le paquet puis le repasse aux gestionnaires
 // Si le statut est C, ils passent le paquet au collecteur
-func ouvrier(ouv chan personne_emp, col chan personne_emp) {
+func ouvrier(g chan personne_emp, ouv chan personne_emp, col chan personne_emp) {
 	for {
 		pers := <-ouv
 		s := pers.statut
+		mux.Lock()
 		fmt.Println("Ouvrier : Paquet recu avec status : " + s)
+		mux.Unlock()
 		switch s {
 		case "V":
 			pers.initialise()
+			mux.Lock()
 			fmt.Println("Paquet vide, retour vers gestionnaire")
+			mux.Unlock()
 			ouv <- pers
 		case "R":
 			pers.travaille()
+			mux.Lock()
 			fmt.Println("Paquet Travail, retour vers gestionnaire")
+			mux.Unlock()
 			ouv <- pers
 		case "C":
+			mux.Lock()
 			fmt.Println("Paquet fini, envoi vers collecteur")
+			mux.Unlock()
 			col <- pers
 		}
 
@@ -194,14 +206,14 @@ func ouvrier(ouv chan personne_emp, col chan personne_emp) {
 // Partie 1: les producteurs cree des personne_int implementees par des personne_emp initialement vides,
 // de statut V mais contenant un numéro de ligne (pour etre initialisee depuis le fichier texte)
 // la personne est passée aux gestionnaires
-func producteur(enfiler chan personne_int, lire chan mess_reader) {
+func producteur(enfiler chan personne_emp, lire chan mess_reader) {
 	for {
 		np := pers_vide
 		nt := make([]func(st.Personne) st.Personne, 0)
 		npe := personne_emp{statut: "V", id: rand.Intn(TAILLE_SOURCE), tasks: nt, Personne: np, reader: lire}
 		// npe := personne_emp("V", randIntn(TAILLE_SOURCE), nt, np, mess_reader)
 		fmt.Println("Production ligne", npe.id)
-		enfiler <- personne_int(&npe)
+		enfiler <- personne_emp(npe)
 	}
 }
 
@@ -216,14 +228,52 @@ func producteur_distant( /*enfiler chan personne_int, proxer chan message_proxy,
 // ils les passent aux ouvriers quand ils sont disponibles
 // ATTENTION: la famine des ouvriers doit être évitée: si les producteurs inondent les gestionnaires de paquets, les ouvrier ne pourront
 // plus rendre les paquets surlesquels ils travaillent pour en prendre des autres
-func gestionnaire() {
-	// A FAIRE
+func gestionnaire(filepp []personne_emp, filepo []personne_emp, g chan personne_emp, ouv chan personne_emp) {
+	for {
+		select {
+		case val := <-g:
+			fmt.Println("Gest:Recoit paquet vide du producteur")
+			filepp = append(filepp, val) //taille limiter a pas oublier
+
+			if len(filepp) > 0 {
+				fmt.Println("Gest:Renvoie le paquet aux Ouvriers")
+				ouv <- filepp[0]
+				i := 0
+				//Supprimer l'élément de la liste
+				copy(filepp[i:], filepp[i+1:])
+				filepp = filepp[:len(filepp)-1]
+			}
+		case val := <-ouv:
+			fmt.Println("Gest: Paquet reçu d'Ouvriers")
+			filepo = append(filepo, val) //taille limiter a pas oublier
+
+			ouv <- filepo[0]
+			fmt.Println("Gest: Renvoie du paquet vers Ouvriers")
+			i := 0
+			//Supprimer l'élément de la liste
+			copy(filepo[i:], filepo[i+1:])
+			filepo = filepo[:len(filepo)-1]
+		}
+	}
 }
 
 // Partie 1: le collecteur recoit des personne_int dont le statut est c, il les collecte dans un journal
 // quand il recoit un signal de fin du temps, il imprime son journal.
-func collecteur() {
-	// A FAIRE
+func collecteur(col chan personne_emp, fintemps chan int) {
+	journal := make([]string, 0, 5) //5 emplacement pour le journal
+	for {
+		select {
+		case paquet := <-col:
+			fmt.Println("Coll: Paquet recu, enregistrement dans le journal")
+			journal = append(journal, paquet.vers_string())
+		case <-fintemps:
+			fmt.Println("Journal : ", journal)
+			fmt.Println("Fin du travail : On rentre à la maison")
+			fintemps <- 0
+			break
+		}
+	}
+
 }
 
 func main() {
@@ -237,7 +287,25 @@ func main() {
 	fintemps := make(chan int)
 	// A FAIRE
 	// creer les canaux
+	g := make(chan personne_emp)   //canal gestionnaire
+	ouv := make(chan personne_emp) //canal ouvrier
+	col := make(chan personne_emp) //canal reducteur
+	url := make(chan mess_reader)
+	filepp := make([]personne_emp, 0, 5)
+	filepo := make([]personne_emp, 0, 5)
 	// lancer les goroutines (parties 1 et 2): 1 lecteur, 1 collecteur, des producteurs, des gestionnaires, des ouvriers
+	go func() { lecteur(url) }()
+	go func() { collecteur(col, fintemps) }()
+	for i := 0; i < NB_P; i++ {
+		go func() { producteur(g, url) }()
+	}
+	for i := 0; i < NB_G; i++ {
+		go func() { gestionnaire(filepp, filepo, g, ouv) }()
+	}
+	for i := 0; i < NB_O; i++ {
+		go func() { ouvrier(g, ouv, col) }()
+	}
+
 	// lancer les goroutines (partie 2): des producteurs distants, un proxy
 	time.Sleep(time.Duration(millis) * time.Millisecond)
 	fintemps <- 0
