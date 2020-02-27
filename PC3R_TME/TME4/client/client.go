@@ -36,9 +36,8 @@ type paqToReader struct {
 type personne_emp struct {
 	statut string
 	st.Personne
-	reader chan paqToReader
-	tasks  []func(st.Personne) st.Personne
-	id     int
+	tasks []func(st.Personne) st.Personne
+	ligne int
 }
 
 // paquet de personne distante, pour la Partie 2, implemente l'interface personne_int
@@ -69,9 +68,9 @@ func personne_de_ligne(l string) st.Personne {
 // *** METHODES DE L'INTERFACE personne_int POUR LES PAQUETS DE PERSONNES ***
 
 func (p *personne_emp) initialise() {
-	ret := make(chan string)                            //cree le canal de reponse du reader
-	p.reader <- paqToReader{contenu: p.id, retour: ret} //envoie la demande de ligne et le canal au reader
-	ligne := <-ret                                      //attend le resultat du reader
+	//ret := make(chan string)                            //cree le canal de reponse du reader
+	//p.reader <- paqToReader{contenu: p.ligne, retour: ret} //envoie la demande de ligne et le canal au reader
+	ligne := lecteur(p.ligne) //attend le resultat du reader
 	p.Personne = personne_de_ligne(ligne)
 	for i := 0; i < rand.Intn(6)+1; i++ {
 		p.tasks = append(p.tasks, tr.UnTravail())
@@ -144,29 +143,28 @@ func proxy() {
 }
 
 // Partie 1 : contacté par la méthode initialise() de personne_emp, récupère une ligne donnée dans le fichier source
-func lecteur(chanRead chan paqToReader) {
-	for {
-		paq := <-chanRead
-		fmt.Println("lecture de la ligne", paq.contenu)
-		fichier, err := os.Open(FICHIER_SOURCE)
-		if err != nil {
-			log.Fatal(err)
-		}
+func lecteur(ligne int) string {
 
-		scanner := bufio.NewScanner(fichier)
-		_ = scanner.Scan()
-
-		for i := 0; i < paq.contenu; i++ {
-			_ = scanner.Scan()
-		}
-		res := scanner.Scan()
-		if res == false {
-			log.Fatal(err)
-		} else {
-			paq.retour <- scanner.Text()
-		}
-		fichier.Close()
+	fmt.Println("lecture de la ligne", ligne)
+	fichier, err := os.Open(FICHIER_SOURCE)
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	scanner := bufio.NewScanner(fichier)
+	_ = scanner.Scan()
+
+	for i := 0; i < ligne; i++ {
+		_ = scanner.Scan()
+	}
+	res := scanner.Scan()
+	if res == false {
+		panic(err)
+	}
+	s := scanner.Text()
+	fichier.Close()
+	return s
+
 }
 
 // Partie 1: récupèrent des personne_int depuis les gestionnaires, font une opération dépendant de donne_statut()
@@ -206,13 +204,13 @@ func ouvrier(ouv chan personne_emp, col chan personne_emp) {
 // Partie 1: les producteurs cree des personne_int implementees par des personne_emp initialement vides,
 // de statut V mais contenant un numéro de ligne (pour etre initialisee depuis le fichier texte)
 // la personne est passée aux gestionnaires
-func producteur(enfiler chan personne_emp, lire chan paqToReader) {
+func producteur(enfiler chan personne_emp) {
 	for {
 		np := pers_vide
 		nt := make([]func(st.Personne) st.Personne, 0)
-		npe := personne_emp{statut: "V", id: rand.Intn(TAILLE_SOURCE), tasks: nt, Personne: np, reader: lire}
+		npe := personne_emp{statut: "V", ligne: rand.Intn(TAILLE_SOURCE), tasks: nt, Personne: np}
 		// npe := personne_emp("V", randIntn(TAILLE_SOURCE), nt, np, paqToReader)
-		fmt.Println("Production ligne", npe.id)
+		fmt.Println("Production ligne", npe.ligne)
 		enfiler <- personne_emp(npe)
 	}
 }
@@ -228,10 +226,10 @@ func producteur_distant( /*enfiler chan personne_int, proxer chan message_proxy,
 // ils les passent aux ouvriers quand ils sont disponibles
 // ATTENTION: la famine des ouvriers doit être évitée: si les producteurs inondent les gestionnaires de paquets, les ouvrier ne pourront
 // plus rendre les paquets surlesquels ils travaillent pour en prendre des autres
-func gestionnaire(filepp []personne_emp, filepo []personne_emp, g chan personne_emp, ouv chan personne_emp) {
+func gestionnaire(filepp []personne_emp, filepo []personne_emp, gest chan personne_emp, ouv chan personne_emp) {
 	for {
 		select {
-		case val := <-g:
+		case val := <-gest:
 			fmt.Println("Gest:Recoit paquet vide du producteur")
 			filepp = append(filepp, val) //taille limiter a pas oublier
 
@@ -290,14 +288,14 @@ func main() {
 	chanGest := make(chan personne_emp) //canal gestionnaire
 	chanOuv := make(chan personne_emp)  //canal ouvrier
 	chanCol := make(chan personne_emp)  //canal collecteur
-	ChanRead := make(chan paqToReader)
+	// ChanRead := make(chan paqToReader)
 	filepp := make([]personne_emp, 0, 5)
 	filepo := make([]personne_emp, 0, 5)
 	// lancer les goroutines (parties 1 et 2): 1 lecteur, 1 collecteur, des producteurs, des gestionnaires, des ouvriers
-	go func() { lecteur(ChanRead) }()
+
 	go func() { collecteur(chanCol, fintemps) }()
 	for i := 0; i < NB_P; i++ {
-		go func() { producteur(chanGest, ChanRead) }()
+		go func() { producteur(chanGest) }()
 	}
 	for i := 0; i < NB_G; i++ {
 		go func() { gestionnaire(filepp, filepo, chanGest, chanOuv) }()
