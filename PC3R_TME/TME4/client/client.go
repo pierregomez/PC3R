@@ -27,7 +27,7 @@ var mux sync.Mutex
 
 var pers_vide = st.Personne{Nom: "", Prenom: "", Age: 0, Sexe: "M"} // une personne vide
 
-type reader_paq struct {
+type paqToReader struct {
 	contenu int         //numero de ligne demandee au reader
 	retour  chan string //chanel pour la ligne rendue par le reader
 }
@@ -36,7 +36,7 @@ type reader_paq struct {
 type personne_emp struct {
 	statut string
 	st.Personne
-	reader chan reader_paq
+	reader chan paqToReader
 	tasks  []func(st.Personne) st.Personne
 	id     int
 }
@@ -69,9 +69,9 @@ func personne_de_ligne(l string) st.Personne {
 // *** METHODES DE L'INTERFACE personne_int POUR LES PAQUETS DE PERSONNES ***
 
 func (p *personne_emp) initialise() {
-	ret := make(chan string)                           //cree le canal de reponse du reader
-	p.reader <- reader_paq{contenu: p.id, retour: ret} //envoie la demande de ligne et le canal au reader
-	ligne := <-ret                                     //attend le resultat du reader
+	ret := make(chan string)                            //cree le canal de reponse du reader
+	p.reader <- paqToReader{contenu: p.id, retour: ret} //envoie la demande de ligne et le canal au reader
+	ligne := <-ret                                      //attend le resultat du reader
 	p.Personne = personne_de_ligne(ligne)
 	for i := 0; i < rand.Intn(6)+1; i++ {
 		p.tasks = append(p.tasks, tr.UnTravail())
@@ -144,10 +144,10 @@ func proxy() {
 }
 
 // Partie 1 : contacté par la méthode initialise() de personne_emp, récupère une ligne donnée dans le fichier source
-func lecteur(url chan reader_paq) {
+func lecteur(chanRead chan paqToReader) {
 	for {
-		m := <-url
-		fmt.Println("lecture de la ligne", m.contenu)
+		paq := <-chanRead
+		fmt.Println("lecture de la ligne", paq.contenu)
 		fichier, err := os.Open(FICHIER_SOURCE)
 		if err != nil {
 			log.Fatal(err)
@@ -156,14 +156,14 @@ func lecteur(url chan reader_paq) {
 		scanner := bufio.NewScanner(fichier)
 		_ = scanner.Scan()
 
-		for i := 0; i < m.contenu; i++ {
+		for i := 0; i < paq.contenu; i++ {
 			_ = scanner.Scan()
 		}
 		res := scanner.Scan()
 		if res == false {
 			log.Fatal(err)
 		} else {
-			m.retour <- scanner.Text()
+			paq.retour <- scanner.Text()
 		}
 		fichier.Close()
 	}
@@ -206,12 +206,12 @@ func ouvrier(ouv chan personne_emp, col chan personne_emp) {
 // Partie 1: les producteurs cree des personne_int implementees par des personne_emp initialement vides,
 // de statut V mais contenant un numéro de ligne (pour etre initialisee depuis le fichier texte)
 // la personne est passée aux gestionnaires
-func producteur(enfiler chan personne_emp, lire chan reader_paq) {
+func producteur(enfiler chan personne_emp, lire chan paqToReader) {
 	for {
 		np := pers_vide
 		nt := make([]func(st.Personne) st.Personne, 0)
 		npe := personne_emp{statut: "V", id: rand.Intn(TAILLE_SOURCE), tasks: nt, Personne: np, reader: lire}
-		// npe := personne_emp("V", randIntn(TAILLE_SOURCE), nt, np, reader_paq)
+		// npe := personne_emp("V", randIntn(TAILLE_SOURCE), nt, np, paqToReader)
 		fmt.Println("Production ligne", npe.id)
 		enfiler <- personne_emp(npe)
 	}
@@ -290,7 +290,7 @@ func main() {
 	chanGest := make(chan personne_emp) //canal gestionnaire
 	chanOuv := make(chan personne_emp)  //canal ouvrier
 	chanCol := make(chan personne_emp)  //canal collecteur
-	ChanRead := make(chan reader_paq)
+	ChanRead := make(chan paqToReader)
 	filepp := make([]personne_emp, 0, 5)
 	filepo := make([]personne_emp, 0, 5)
 	// lancer les goroutines (parties 1 et 2): 1 lecteur, 1 collecteur, des producteurs, des gestionnaires, des ouvriers
@@ -303,7 +303,7 @@ func main() {
 		go func() { gestionnaire(filepp, filepo, chanGest, chanOuv) }()
 	}
 	for i := 0; i < NB_O; i++ {
-		go func() { ouvrier(chanGest, chanOuv, chanCol) }()
+		go func() { ouvrier(chanOuv, chanCol) }()
 	}
 
 	// lancer les goroutines (partie 2): des producteurs distants, un proxy
