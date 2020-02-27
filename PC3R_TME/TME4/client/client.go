@@ -27,16 +27,16 @@ var mux sync.Mutex
 
 var pers_vide = st.Personne{Nom: "", Prenom: "", Age: 0, Sexe: "M"} // une personne vide
 
-type mess_reader struct {
-	contenu int
-	retour  chan string
+type reader_paq struct {
+	contenu int         //numero de ligne demandee au reader
+	retour  chan string //chanel pour la ligne rendue par le reader
 }
 
 // paquet de personne, sur lequel on peut travailler, implemente l'interface personne_int
 type personne_emp struct {
 	statut string
 	st.Personne
-	reader chan mess_reader
+	reader chan reader_paq
 	tasks  []func(st.Personne) st.Personne
 	id     int
 }
@@ -50,7 +50,7 @@ type personne_dist struct {
 type personne_int interface {
 	initialise()          // appelle sur une personne vide de statut V, remplit les champs de la personne et passe son statut à R
 	travaille()           // appelle sur une personne de statut R, travaille une fois sur la personne et passe son statut à C s'il n'y a plus de travail a faire
-	vers_string() string  // convertit la personne en string
+	vers_string() string  // convertit la personne en string format "<Prenom> <Nom> : <Age> ans"
 	donne_statut() string // renvoie V, R ou C
 }
 
@@ -69,9 +69,9 @@ func personne_de_ligne(l string) st.Personne {
 // *** METHODES DE L'INTERFACE personne_int POUR LES PAQUETS DE PERSONNES ***
 
 func (p *personne_emp) initialise() {
-	ret := make(chan string)
-	p.reader <- mess_reader{contenu: p.id, retour: ret}
-	ligne := <-ret
+	ret := make(chan string)                           //crer le canal de reponse du reader
+	p.reader <- reader_paq{contenu: p.id, retour: ret} //envoie la demande de ligne et le canal au reader
+	ligne := <-ret                                     //attend le resultat du reader
 	p.Personne = personne_de_ligne(ligne)
 	for i := 0; i < rand.Intn(6)+1; i++ {
 		p.tasks = append(p.tasks, tr.UnTravail())
@@ -144,7 +144,7 @@ func proxy() {
 }
 
 // Partie 1 : contacté par la méthode initialise() de personne_emp, récupère une ligne donnée dans le fichier source
-func lecteur(url chan mess_reader) {
+func lecteur(url chan reader_paq) {
 	for {
 		m := <-url
 		fmt.Println("lecture de la ligne", m.contenu)
@@ -173,7 +173,7 @@ func lecteur(url chan mess_reader) {
 // Si le statut est V, ils initialise le paquet de personne puis le repasse aux gestionnaires
 // Si le statut est R, ils travaille une fois sur le paquet puis le repasse aux gestionnaires
 // Si le statut est C, ils passent le paquet au collecteur
-func ouvrier(g chan personne_emp, ouv chan personne_emp, col chan personne_emp) {
+func ouvrier(ouv chan personne_emp, col chan personne_emp) {
 	for {
 		pers := <-ouv
 		s := pers.statut
@@ -206,12 +206,12 @@ func ouvrier(g chan personne_emp, ouv chan personne_emp, col chan personne_emp) 
 // Partie 1: les producteurs cree des personne_int implementees par des personne_emp initialement vides,
 // de statut V mais contenant un numéro de ligne (pour etre initialisee depuis le fichier texte)
 // la personne est passée aux gestionnaires
-func producteur(enfiler chan personne_emp, lire chan mess_reader) {
+func producteur(enfiler chan personne_emp, lire chan reader_paq) {
 	for {
 		np := pers_vide
 		nt := make([]func(st.Personne) st.Personne, 0)
 		npe := personne_emp{statut: "V", id: rand.Intn(TAILLE_SOURCE), tasks: nt, Personne: np, reader: lire}
-		// npe := personne_emp("V", randIntn(TAILLE_SOURCE), nt, np, mess_reader)
+		// npe := personne_emp("V", randIntn(TAILLE_SOURCE), nt, np, reader_paq)
 		fmt.Println("Production ligne", npe.id)
 		enfiler <- personne_emp(npe)
 	}
@@ -290,7 +290,7 @@ func main() {
 	g := make(chan personne_emp)   //canal gestionnaire
 	ouv := make(chan personne_emp) //canal ouvrier
 	col := make(chan personne_emp) //canal reducteur
-	url := make(chan mess_reader)
+	url := make(chan reader_paq)
 	filepp := make([]personne_emp, 0, 5)
 	filepo := make([]personne_emp, 0, 5)
 	// lancer les goroutines (parties 1 et 2): 1 lecteur, 1 collecteur, des producteurs, des gestionnaires, des ouvriers
