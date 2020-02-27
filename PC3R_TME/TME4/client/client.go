@@ -142,7 +142,7 @@ func proxy() {
 // Partie 1 : contacté par la méthode initialise() de personne_emp, récupère une ligne donnée dans le fichier source
 func lecteur(url chan mess_reader) {
 	for {
-		m := url
+		m := <-url
 		fmt.Println("lecture de la ligne", m.contenu)
 		fichier, err := os.Open(FICHIER_SOURCE)
 		if err != nil {
@@ -198,9 +198,9 @@ func producteur(enfiler chan personne_int, lire chan mess_reader) {
 	for {
 		np := pers_vide
 		nt := make([]func(st.Personne) st.Personne, 0)
-		//npe := personne_emp(statut: "V", ligne: randIntn(TAILLE_SOURCE), tasks: nt, Personne: np, reader: mess_reader)
-		npe := personne_emp("V", randIntn(TAILLE_SOURCE), nt, np, mess_reader)
-		fmt.Println("Production ligne", npe.ligne)
+		npe := personne_emp{statut: "V", id: rand.Intn(TAILLE_SOURCE), tasks: nt, Personne: np, reader: lire}
+		// npe := personne_emp("V", randIntn(TAILLE_SOURCE), nt, np, mess_reader)
+		fmt.Println("Production ligne", npe.id)
 		enfiler <- personne_int(&npe)
 	}
 }
@@ -232,7 +232,7 @@ func main() {
 		fmt.Println("Format: client <port> <millisecondes d'attente>")
 		return
 	}
-	port, _ := strconv.Atoi(os.Args[1])   // utile pour la partie 2
+	//port, _ := strconv.Atoi(os.Args[1])   // utile pour la partie 2
 	millis, _ := strconv.Atoi(os.Args[2]) // duree du timeout
 	fintemps := make(chan int)
 	// A FAIRE
