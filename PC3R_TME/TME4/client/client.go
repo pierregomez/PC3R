@@ -69,7 +69,7 @@ func personne_de_ligne(l string) st.Personne {
 // *** METHODES DE L'INTERFACE personne_int POUR LES PAQUETS DE PERSONNES ***
 
 func (p *personne_emp) initialise() {
-	ret := make(chan string)                           //crer le canal de reponse du reader
+	ret := make(chan string)                           //cree le canal de reponse du reader
 	p.reader <- reader_paq{contenu: p.id, retour: ret} //envoie la demande de ligne et le canal au reader
 	ligne := <-ret                                     //attend le resultat du reader
 	p.Personne = personne_de_ligne(ligne)
@@ -90,7 +90,7 @@ func (p *personne_emp) travaille() {
 	}
 }
 
-func (p *personne_emp) vers_string() string {
+func (p *personne_emp) versString() string {
 	var add string
 	if p.Sexe == "F" {
 		add = "Madame"
@@ -100,7 +100,7 @@ func (p *personne_emp) vers_string() string {
 	return fmt.Sprint(add, p.Prenom, " ", p.Nom, " : ", p.Age, "ans")
 }
 
-func (p *personne_emp) donne_statut() string {
+func (p *personne_emp) donneStatut() string {
 	return p.statut
 }
 
@@ -265,7 +265,7 @@ func collecteur(col chan personne_emp, fintemps chan int) {
 		select {
 		case paquet := <-col:
 			fmt.Println("Coll: Paquet recu, enregistrement dans le journal")
-			journal = append(journal, paquet.vers_string())
+			journal = append(journal, paquet.versString())
 		case <-fintemps:
 			fmt.Println("Journal : ", journal)
 			fmt.Println("Fin du travail : On rentre à la maison")
@@ -287,23 +287,23 @@ func main() {
 	fintemps := make(chan int)
 	// A FAIRE
 	// creer les canaux
-	g := make(chan personne_emp)   //canal gestionnaire
-	ouv := make(chan personne_emp) //canal ouvrier
-	col := make(chan personne_emp) //canal reducteur
-	url := make(chan reader_paq)
+	chanGest := make(chan personne_emp) //canal gestionnaire
+	chanOuv := make(chan personne_emp)  //canal ouvrier
+	chanCol := make(chan personne_emp)  //canal collecteur
+	ChanRead := make(chan reader_paq)
 	filepp := make([]personne_emp, 0, 5)
 	filepo := make([]personne_emp, 0, 5)
 	// lancer les goroutines (parties 1 et 2): 1 lecteur, 1 collecteur, des producteurs, des gestionnaires, des ouvriers
-	go func() { lecteur(url) }()
-	go func() { collecteur(col, fintemps) }()
+	go func() { lecteur(ChanRead) }()
+	go func() { collecteur(chanCol, fintemps) }()
 	for i := 0; i < NB_P; i++ {
-		go func() { producteur(g, url) }()
+		go func() { producteur(chanGest, ChanRead) }()
 	}
 	for i := 0; i < NB_G; i++ {
-		go func() { gestionnaire(filepp, filepo, g, ouv) }()
+		go func() { gestionnaire(filepp, filepo, chanGest, chanOuv) }()
 	}
 	for i := 0; i < NB_O; i++ {
-		go func() { ouvrier(g, ouv, col) }()
+		go func() { ouvrier(chanGest, chanOuv, chanCol) }()
 	}
 
 	// lancer les goroutines (partie 2): des producteurs distants, un proxy
