@@ -179,14 +179,14 @@ func ouvrier(gest chan personne_emp, col chan personne_emp) {
 		switch s {
 		case "V":
 			pers.initialise()
-			fmt.Println("Paquet vide, retour vers gestionnaire")
+			fmt.Println("Ouvrier : Paquet vide, retour vers gestionnaire")
 			gest <- pers
 		case "R":
 			pers.travaille()
-			fmt.Println("Paquet Travail, retour vers gestionnaire")
+			fmt.Println("Ouvrier : Paquet Travail, retour vers gestionnaire")
 			gest <- pers
 		case "C":
-			fmt.Println("Paquet fini, envoi vers collecteur")
+			fmt.Println("Ouvrier : Paquet fini, envoi vers collecteur")
 			col <- pers
 		}
 
@@ -223,7 +223,7 @@ func gestionnaire(filepp []personne_emp /*, filepo []personne_emp*/, gest chan p
 		select {
 
 		case val := <-ouv:
-			fmt.Println("Gest: Paquet reçu d'Ouvriers")
+			fmt.Println("Gest: Paquet reçu d'Ouvriers : " + val.donneStatut())
 			filepp = append(filepp, val) //taille limiter a pas oublier
 
 			ouv <- filepp[0]
@@ -245,7 +245,7 @@ func gestionnaire(filepp []personne_emp /*, filepo []personne_emp*/, gest chan p
 				filepp = filepp[:len(filepp)-1]
 
 			case val := <-gest:
-				fmt.Println("Gest:Recoit paquet vide du producteur")
+				fmt.Println("Gest:Recoit paquet vide du producteur : " + val.donneStatut())
 				filepp = append(filepp, val) //taille limiter a pas oublier
 
 				if len(filepp) > 0 {
