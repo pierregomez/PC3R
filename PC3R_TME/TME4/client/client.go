@@ -171,30 +171,22 @@ func lecteur(ligne int) string {
 // Si le statut est V, ils initialise le paquet de personne puis le repasse aux gestionnaires
 // Si le statut est R, ils travaille une fois sur le paquet puis le repasse aux gestionnaires
 // Si le statut est C, ils passent le paquet au collecteur
-func ouvrier(ouv chan personne_emp, col chan personne_emp) {
+func ouvrier(gest chan personne_emp, col chan personne_emp) {
 	for {
-		pers := <-ouv
+		pers := <-gest
 		s := pers.statut
-		mux.Lock()
 		fmt.Println("Ouvrier : Paquet recu avec status : " + s)
-		mux.Unlock()
 		switch s {
 		case "V":
 			pers.initialise()
-			mux.Lock()
 			fmt.Println("Paquet vide, retour vers gestionnaire")
-			mux.Unlock()
-			ouv <- pers
+			gest <- pers
 		case "R":
 			pers.travaille()
-			mux.Lock()
 			fmt.Println("Paquet Travail, retour vers gestionnaire")
-			mux.Unlock()
-			ouv <- pers
+			gest <- pers
 		case "C":
-			mux.Lock()
 			fmt.Println("Paquet fini, envoi vers collecteur")
-			mux.Unlock()
 			col <- pers
 		}
 
@@ -226,31 +218,44 @@ func producteur_distant( /*enfiler chan personne_int, proxer chan message_proxy,
 // ils les passent aux ouvriers quand ils sont disponibles
 // ATTENTION: la famine des ouvriers doit être évitée: si les producteurs inondent les gestionnaires de paquets, les ouvrier ne pourront
 // plus rendre les paquets surlesquels ils travaillent pour en prendre des autres
-func gestionnaire(filepp []personne_emp, filepo []personne_emp, gest chan personne_emp, ouv chan personne_emp) {
+func gestionnaire(filepp []personne_emp /*, filepo []personne_emp*/, gest chan personne_emp, ouv chan personne_emp) {
 	for {
 		select {
-		case val := <-gest:
-			fmt.Println("Gest:Recoit paquet vide du producteur")
-			filepp = append(filepp, val) //taille limiter a pas oublier
 
-			if len(filepp) > 0 {
-				fmt.Println("Gest:Renvoie le paquet aux Ouvriers")
-				ouv <- filepp[0]
-				i := 0
-				//Supprimer l'élément de la liste
-				copy(filepp[i:], filepp[i+1:])
-				filepp = filepp[:len(filepp)-1]
-			}
 		case val := <-ouv:
 			fmt.Println("Gest: Paquet reçu d'Ouvriers")
-			filepo = append(filepo, val) //taille limiter a pas oublier
+			filepp = append(filepp, val) //taille limiter a pas oublier
 
-			ouv <- filepo[0]
+			ouv <- filepp[0]
 			fmt.Println("Gest: Renvoie du paquet vers Ouvriers")
-			i := 0
 			//Supprimer l'élément de la liste
-			copy(filepo[i:], filepo[i+1:])
-			filepo = filepo[:len(filepo)-1]
+			// copy(filepp[0:], filepp[1:])
+			filepp = filepp[:len(filepp)-1]
+
+		default:
+			select {
+			case val := <-ouv:
+				fmt.Println("Gest: Paquet reçu d'Ouvriers")
+				filepp = append(filepp, val) //taille limiter a pas oublier
+
+				ouv <- filepp[0]
+				fmt.Println("Gest: Renvoie du paquet vers Ouvriers")
+				//Supprimer l'élément de la liste
+				// copy(filepp[0:], filepp[1:])
+				filepp = filepp[:len(filepp)-1]
+
+			case val := <-gest:
+				fmt.Println("Gest:Recoit paquet vide du producteur")
+				filepp = append(filepp, val) //taille limiter a pas oublier
+
+				if len(filepp) > 0 {
+					fmt.Println("Gest:Renvoie le paquet aux Ouvriers")
+					ouv <- filepp[0]
+					//Supprimer l'élément de la liste
+					// copy(filepp[0:], filepp[1:])
+					filepp = filepp[:len(filepp)-1]
+				}
+			}
 		}
 	}
 }
@@ -285,12 +290,12 @@ func main() {
 	fintemps := make(chan int)
 	// A FAIRE
 	// creer les canaux
-	chanGest := make(chan personne_emp) //canal gestionnaire
-	chanOuv := make(chan personne_emp)  //canal ouvrier
-	chanCol := make(chan personne_emp)  //canal collecteur
+	chanGest := make(chan personne_emp)       //canal gestionnaire
+	chanOuv := make(chan personne_emp /*,1*/) //canal ouvrier
+	chanCol := make(chan personne_emp)        //canal collecteur
 	// ChanRead := make(chan paqToReader)
 	filepp := make([]personne_emp, 0, 5)
-	filepo := make([]personne_emp, 0, 5)
+	// filepo := make([]personne_emp, 0, 5)
 	// lancer les goroutines (parties 1 et 2): 1 lecteur, 1 collecteur, des producteurs, des gestionnaires, des ouvriers
 
 	go func() { collecteur(chanCol, fintemps) }()
@@ -298,7 +303,7 @@ func main() {
 		go func() { producteur(chanGest) }()
 	}
 	for i := 0; i < NB_G; i++ {
-		go func() { gestionnaire(filepp, filepo, chanGest, chanOuv) }()
+		go func() { gestionnaire(filepp /*filepo,*/, chanGest, chanOuv) }()
 	}
 	for i := 0; i < NB_O; i++ {
 		go func() { ouvrier(chanOuv, chanCol) }()
