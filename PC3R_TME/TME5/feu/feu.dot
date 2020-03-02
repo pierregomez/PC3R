@@ -1,0 +1,39 @@
+digraph p_feu {
+size="8,10";
+  GT [shape=box,style=dotted,label="feu"];
+  GT -> S1;
+	S1 -> S2  [color=black,style=solid,label="couleur = ORANGE"];
+	S2 -> S3  [color=black,style=solid,label="clignotant = 1"];
+	S3 -> S8  [color=black,style=bold,label="observe!couleur,clignotant"];
+	S8 -> S12  [color=black,style=solid,label="(1)"];
+	S8 -> S1  [color=black,style=solid,label="goto intitial"];
+	S12 -> S11  [color=black,style=dashed,label="couleur = ROUGE"];
+	S11 -> S19  [color=black,style=bold,label="observe!couleur,clignotant"];
+	S19 -> S12  [color=black,style=solid,label="(1)"];
+	S19 -> S23  [color=black,style=solid,label="(1)"];
+	S19 -> S43  [color=black,style=solid,label="(1)"];
+	S23 -> S22  [color=black,style=dashed,label="couleur = VERT"];
+	S22 -> S30  [color=black,style=bold,label="observe!couleur,clignotant"];
+	S30 -> S23  [color=black,style=solid,label="(1)"];
+	S30 -> S34  [color=black,style=solid,label="(1)"];
+	S30 -> S43  [color=black,style=solid,label="(1)"];
+	S34 -> S33  [color=black,style=dashed,label="couleur = ORANGE"];
+	S33 -> S41  [color=black,style=bold,label="observe!couleur,clignotant"];
+	S41 -> S34  [color=black,style=solid,label="(1)"];
+	S41 -> S12  [color=black,style=solid,label="(1)"];
+	S41 -> S43  [color=black,style=solid,label="(1)"];
+	S43 -> S47  [color=black,style=solid,label="clignotant = 1"];
+	S47 -> S46  [color=black,style=dashed,label="couleur = ORANGE"];
+	S46 -> S50  [color=black,style=bold,label="observe!couleur,clignotant"];
+	S50 -> S47  [color=black,style=solid,label="(1)"];
+}
+digraph p_observateur {
+size="8,10";
+  GT [shape=box,style=dotted,label="observateur"];
+  GT -> S19;
+	S19 -> S17  [color=black,style=bold,label="observe?courant,clignotant"];
+	S17 -> S19  [color=black,style=solid,label="((courant==ORANGE))"];
+	S17 -> S19  [color=black,style=solid,label="((courant==ROUGE))"];
+	S17 -> S19  [color=black,style=solid,label="((courant==VERT))"];
+	S17 -> S19  [color=black,style=solid,label="(clignotant)"];
+}
